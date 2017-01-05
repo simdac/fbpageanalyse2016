@@ -1,0 +1,255 @@
+---
+#title: "SIM DAC Marketing Report EY2016 v1"
+#date: "December 2016"
+output:
+  html_document:
+highlighter: prettify
+---
+
+<style>
+
+body{
+  font-family: 'Oxygen', sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+h1,h2,h3,h4 {
+  font-family: 'Raleway', sans-serif;
+}
+
+.container { width: 1000px; }
+
+h3 {
+  background-color: #D4DAEC;
+  text-indent: 25px; 
+  padding: 10px;
+}
+
+h4 {
+  text-indent: 100px;
+}
+
+g-table-intro h4 {
+  text-indent: 0px;
+}
+
+</style>
+
+![](C:/Users/Ryzal Kamis/Documents/R/SIM DAC Facebook Page Analysis v1/Image Files/SIM DAC Logo 2016 (with Unicorn 2).png)
+
+# SIM DAC Marketing Report EY2016
+
+### Introduction
+
+**This document highlights some insights garnered from data obtained through SIM DAC's marketing efforts. The results reflected are from the collective efforts and dedication of SIM DAC's members - both committee and non-committee.**
+
+### Facebook Page
+This section analyses the club's [Facebook page](https://www.fb.com/dacsim).
+
+Before we begin looking at the data, some context should be provided. The Facebook page have been a channel for marketing the club's events and also a way to communicate with people interested in knowing more about the club.
+
+To begin with, we have to find out when the page was created. However, from the 'About' section of the page, what is stated there is the date which DAC was founded on and not the date of the page's creation. 
+
+![](C:/Users/Ryzal Kamis/Documents/R/SIM DAC Facebook Page Analysis v1/Image Files/DAC FB Founded On.png)
+
+After doing a simple Google search, it turns out that a page's creation date cannot be obtained from the dashboard. So, another approach has to be adopted in getting a 'starting point' for analysing the page. To get a sense of where to begin looking for the starting point, I took a look at the page's only profile picture and looked at when it was added.
+
+![](C:/Users/Ryzal Kamis/Documents/R/SIM DAC Facebook Page Analysis v1/Image Files/DAC FB Profile Pic Date.png)
+
+As seen from above, the date which the profile picture was uploaded is **2nd of February, 2015 (Monday)**. We can start looking for signs of initial activity from 2015 Q1.
+
+As an 'Admin' of the page, I am able to export .csv files from the page's 'Insights' section.
+
+![](C:/Users/Ryzal Kamis/Documents/R/SIM DAC Facebook Page Analysis v1/Image Files/DAC FB Export Data Window.png)
+
+Several .csv files for the quarters of 2015 and 2016 were exported - both page and post level data. The page level data set presents insights on the page's general activity and performance, while the post level data set goes deeper into the posts' performance. The files can be downloaded through a Dropbox link [here](https://www.dropbox.com/sh/j3an65wgyhch8cm/AABR9nzzbFXnZnJKiodgAFyKa?dl=0).
+
+Examining the .csv file through Excel, I observed that several rows from the top contains just null values. However, from the row dated **26th of January, 2015 (Monday)** onwards, there are values recorded. Hence, it is with good reasoning that we adopt the assumption that the club's Facebook page was created on that day.
+
+Before we jump into analysing the data sets, data cleaning (mostly in terms of reconciling the number of variables) has to be done. Further elaboration is done over [here](https://www.google.com). I exported the two data tables obtained from there into .csv files (downloadble from the aforementioned Dropbox link). So, if you were to follow along but skipped the part where data cleaning was done, you can just import those .csv files into your environment.
+
+```{r}
+library(data.table)
+# For Page Level data
+dacFBpage <- fread(input = "SIM DAC Facebook Insights Data Export 2016-12-24 (Page Level - Cleaned).csv")
+# For Post Level data
+dacFBpost <- fread(input = "SIM DAC Facebook Insights Data Export 2016-12-24 (Post Level - Cleaned).csv")
+```
+
+Now that we have imported those data sets, it is time for analysis - level by level.
+
+### Page Level Data - `dacFBpage`
+
+We first check the structure of the page level data set.
+```{r}
+str(dacFBpage, list.len = 5)
+```
+The second parameter set for the line above is to truncate the would-have-been long output (the data table has `r paste(ncol(dacFBpage))` variables). It is shown below that all of `dacFBpage`'s variables are of the 'integer' class except for the first one.
+
+```{r collapse = TRUE}
+# Storing into a data table the class of variables into a data table
+pageVarsClass <- as.data.table(sapply(dacFBpage, class))
+# Checking the distribution of classes
+table(pageVarsClass$V1)
+# Which column is currently regarded as a 'character' variable
+which(pageVarsClass == "character")
+```
+Checking the character length of each values under the `Date` column.
+```{r collapse = TRUE}
+table(nchar(dacFBpage$Date))
+```
+Since all values under the `Date` column are of uniform length, we can now convert the variable from 'character' into a 'Date' class. The values are formatted as "YYYY-MM-DD" (e.g. `r paste(dacFBpage$Date[1])`).
+
+```{r collapse = TRUE}
+class(dacFBpage$Date)
+dacFBpage$Date <- as.Date(x = dacFBpage$Date, format = "%Y-%m-%d")
+class(dacFBpage$Date)
+```
+We have decided the starting point for analysis to be **26th of January, 2015** so we subset the data set to be from then onwards.
+```{r}
+startPoint <- as.Date("2015-01-26", format = "%Y-%m-%d")
+dacFBpage <- dacFBpage[Date >= startPoint]
+```
+Now, we will be checking for elements in the data table that contains either an empty string (""), a white space (" ") or NAs.
+```{r collapse = TRUE}
+table(dacFBpage[,2:ncol(dacFBpage)] == " ")
+```
+```{r collapse = TRUE}
+table(dacFBpage[,2:ncol(dacFBpage)] == "")
+```
+```{r collapse = TRUE}
+table(is.na(dacFBpage[,2:ncol(dacFBpage)]))
+```
+For these columns, what we know is that if it is of an 'NA' value, then it can be imputed with the value '0'. It is safe to assume that these not due to non-availability of information and '0's are measurable values.
+```{r}
+dacFBpage[is.na(dacFBpage)] <- 0
+table(is.na(dacFBpage))
+```
+Now, we can finally do the analysis.
+
+We will start off by plotting the movement of the page's number of likes throughout it's existence.
+
+```{r message = FALSE}
+library(plotly)
+```
+```{r message = FALSE, fig.align = 'center', warning = FALSE}
+pageLikesPlotly <- plot_ly(data = dacFBpage,
+                           x = dacFBpage$Date,
+                           y = dacFBpage$`Lifetime Total likes`,
+                           type = 'scatter',
+                           mode = 'lines')
+pageLikesPlotly
+```
+
+More plots/analyses to come...
+
+### Post Level Data - `dacFBpost`
+
+The Post Level data touches on deeper insights for each published posts on the page's timeline. From the extent of reach to clicks, we will be looking into the different insights we can garner from the post level data here.
+
+Structure of the post level data...
+```{r}
+str(dacFBpost, list.len = 7)
+```
+Here we can see that post level data has more flavour to it with the additional presence of a potential categorical (`Type`) and text variable (`Post Message`). However, we can also see some variables categorised as logical variables but it does not seem to make sense on the surface. We will investigate further as we go along.
+
+```{r collapse = TRUE}
+# Storing into a data table the class of variables into a data table
+postVarsClass <- as.data.table(sapply(dacFBpost, class))
+# Checking the distribution of classes
+table(postVarsClass$V1)
+```
+To investigate which variables are associated with each class of variables, we also need to create a vector of the variable names so we can make easily make the association.
+
+```{r collapse = TRUE}
+postVarsNames <- names(dacFBpost)
+```
+
+```{r collapse = TRUE}
+# Which columns are currently regarded as a 'character' variable
+postVarsChar <- which(postVarsClass == "character")
+# Identifying the names of those columns
+postVarsNames[postVarsChar]
+```
+From the output returned to use, the variables that should not be retained as 'character' variables are `Type` (to categorical) and `Posted` (to date).
+```{r collapse = TRUE}
+# Which columns are currently regarded as a 'logical' variable
+postVarsLogic <- which(postVarsClass == "logical")
+# Identifying the names of those columns
+postVarsNames[postVarsLogic]
+```
+Judging from the output, it would make more sense they are regarded as categorical variables but why could they possible be regarded as logical variables?
+```{r collapse = TRUE}
+table(is.na(dacFBpost$Countries))
+table(is.na(dacFBpost$Languages))
+table(is.na(dacFBpost$`Audience targeting`))
+```
+Oh. That's why. Due to these variables having only NA values, they could be regarded by the parser as being NA or otherwise i.e FALSE or TRUE. However, since they only contain NA values, they are redundant.
+
+```{r collapse = TRUE}
+ncol(dacFBpost)
+dacFBpost <- dacFBpost[ , -(postVarsLogic), with = FALSE]
+ncol(dacFBpost)
+```
+Now, on to converting `Posted` variable into a proper date and time format. We shall first check that the character length of each value under the `Posted` column are uniform.
+```{r collapse = TRUE}
+table(nchar(dacFBpost$Posted))
+```
+They are. Now we use the `IDateTime` function for conversion. The values are formatted as "MM-DD-YYYY HH:MM:SS AM/PM" (e.g. `r paste(dacFBpost$Posted[1])`).
+```{r collapse = TRUE}
+# Currently, variable contains character strings
+class(dacFBpost$Posted)
+# Create a vector of strings converted into POSIXlt/POSIXt
+# We cannot simply overwrite into the same column as data tables do not allow POSIXlt formatted elements
+postDateTime <- strptime(x = dacFBpost$Posted, format = "%m/%d/%Y %I:%M:%S %p")
+# Creating a data table containing formatted dates and times of the posts
+postDateTimeDTab <- IDateTime(postDateTime)
+(postDateTimeDTab)
+# Combine the data tables
+dacFBpost <- cbind(dacFBpost,postDateTimeDTab)
+# Rename the newly added variables appropriately
+names(dacFBpost)[names(dacFBpost) %in% c("idate", "itime")] = c("Date", "Time")
+# Get rid of the 'Posted' variable
+dacFBpost$Posted <- NULL
+```
+The `Type` variable should be a categorical variable.
+```{r collapse = TRUE}
+# Current class for variable
+class(dacFBpost$Type)
+# Convert into categorical variable
+dacFBpost$Type <- as.factor(dacFBpost$Type)
+class(dacFBpost$Type)
+# Here we see that the first level is unnamed
+levels(dacFBpost$Type)
+# We give it a reasonable name
+levels(dacFBpost$Type)[1] <- "Others"
+levels(dacFBpost$Type)
+```
+Like with the page level data, the variables of integer class can be given '0's in place of their NA values.
+```{r collapse = TRUE}
+table(is.na(dacFBpost))
+# Identify which columns are of integer class
+# Storing into a data table the class of variables into a data table (updated)
+postVarsClass <- as.data.table(sapply(dacFBpost, class))
+postVarsClass <- postVarsClass[1,]
+# Which columns are currently regarded as integer variables
+postVarsInt <- which(postVarsClass == "integer")
+# Names of variables of integer class
+names(postVarsClass)[postVarsInt]
+# Imputing the '0's
+dacFBpost[is.na(dacFBpost)] <- 0
+table(is.na(dacFBpost))
+```
+For our first analysis, we will plot the average post count against the different quarters in 2015 and 2016.
+```{r collapse = TRUE}
+library(zoo)
+dacFBpost$YearQuarter <- as.Date(as.yearqtr(dacFBpost$Date))
+postGroupedQuarter <- dacFBpost[ , .N, by=dacFBpost$YearQuarter]
+postCountPlot <- plot_ly(data = postGroupedQuarter,
+                         x = postGroupedQuarter$dacFBpost,
+                         y = postGroupedQuarter$N,
+                         type = 'scatter',
+                         mode = 'lines')
+postCountPlot
+```
